@@ -1,0 +1,19 @@
+# Audio files
+*.mp3
+*.wav
+*.aac
+
+# Tafseer audio folder
+tafseer/
+assets/audio/
+
+# Node modules
+node_modules/
+
+# Expo
+.expo/
+dist/
+build/
+
+# Logs
+*.log

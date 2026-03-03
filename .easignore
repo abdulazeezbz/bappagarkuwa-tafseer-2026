@@ -1,0 +1,4 @@
+# Node / Expo
+node_modules/
+.expo/
+.vscode/
