@@ -50,12 +50,12 @@ const darkTheme = {
 
 // PRELOAD ASSETS
 const PRELOAD_IMAGES = [
-  require('@/assets/images/photos/bg (1).jpg'),
-  require('@/assets/images/photos/bg (2).jpg'),
-  require('@/assets/images/photos/bg (3).jpg'),
-  require('@/assets/images/photos/bg (4).jpg'),
-  require('@/assets/images/photos/bg (5).jpg'),
-  require('@/assets/images/photos/bg (6).jpg'),
+  require('@/assets/images/photos/bg_1.jpg'),
+  require('@/assets/images/photos/bg_2.jpg'),
+  require('@/assets/images/photos/bg_3.jpg'),
+  require('@/assets/images/photos/bg_4.jpg'),
+  require('@/assets/images/photos/bg_5.jpg'),
+  require('@/assets/images/photos/bg_6.jpg'),
   require('@/assets/banner/day_1.jpg'),
   require('@/assets/banner/day_2.jpg'),
   require('@/assets/banner/day_3.jpg'),

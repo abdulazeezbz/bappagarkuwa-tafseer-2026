@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "bappagarkuwa-tafseer-2026",
+    "name": "Prof. Abdullahi Bappah Garkuwa 2026 Ramadan Tafseer",
     "slug": "bappagarkuwa-tafseer-2026",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/banner/day_4.jpg",
     "scheme": "bappagarkuwatafseer2026",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -19,9 +19,9 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "foregroundImage": "./assets/banner/day_4.jpg",
         "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "monochromeImage": "./assets/banner/day_4.jpg"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -41,7 +41,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/banner/day_4.jpg",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",

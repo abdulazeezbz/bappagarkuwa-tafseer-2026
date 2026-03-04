@@ -6,6 +6,7 @@ import {
   type AudioStatus,
 } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
+import { Image as ExpoImage } from "expo-image";
 import { useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -42,7 +43,7 @@ const audioFiles: AudioItem[] = [
   {
     id: "1",
     title: "Ramadan Tafseer - Day 01",
-    source: "https://res.cloudinary.com/dpjni6fdl/video/upload/v1772538042/day_1_sc32zq.mp3",
+    source: "https://res.cloudinary.com/dpjni6fdl/video/upload/v1772538042/day_1.mp3",
     banner: require("@/assets/banner/day_1.jpg"),
   },
   {
@@ -124,6 +125,7 @@ export default function TafseerScreen() {
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [timelineWidth, setTimelineWidth] = useState(1);
   const [hasActiveAudio, setHasActiveAudio] = useState(false);
+  const [cachedIds, setCachedIds] = useState<string[]>([]);
 
   const currentIndexRef = useRef(0);
   const playerRef = useRef<AudioPlayer | null>(null);
@@ -136,6 +138,8 @@ export default function TafseerScreen() {
   const spinLoopRef = useRef<Animated.CompositeAnimation | null>(null);
   const vizValue = useRef(new Animated.Value(0)).current;
   const vizLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const morphValue = useRef(new Animated.Value(0)).current;
+  const morphLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const currentAudio = audioFiles[currentIndex];
   const spectrumSegments = useMemo(
@@ -203,14 +207,10 @@ export default function TafseerScreen() {
       try {
         // --- CACHING LOGIC ---
         const filename = `audio_${selected.id}.mp3`;
+        const tempFilename = `${filename}.tmp`;
         const cacheDir = FileSystem.cacheDirectory + "audio_cache/";
         const fileUri = cacheDir + filename;
-
-        // Ensure cache directory exists
-        const dirInfo = await FileSystem.getInfoAsync(cacheDir);
-        if (!dirInfo.exists) {
-          await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
-        }
+        const tempUri = cacheDir + tempFilename;
 
         const fileInfo = await FileSystem.getInfoAsync(fileUri);
         let audioSource: string = selected.source;
@@ -220,12 +220,22 @@ export default function TafseerScreen() {
           audioSource = fileUri;
         } else {
           console.log(`[AudioCache] Cache miss: ${selected.source}`);
-          // Start download in background for next time
-          FileSystem.downloadAsync(selected.source, fileUri)
-            .then(() => console.log(`[AudioCache] Finished caching: ${filename}`))
-            .catch((err: Error) =>
-              console.error("[AudioCache] Download failed:", err),
-            );
+          // Start download to a temporary file first
+          FileSystem.downloadAsync(selected.source, tempUri)
+            .then(async (result) => {
+              if (result.status === 200) {
+                await FileSystem.moveAsync({ from: tempUri, to: fileUri });
+                console.log(`[AudioCache] Finished caching: ${filename}`);
+                setCachedIds(prev => [...new Set([...prev, selected.id])]);
+              } else {
+                console.warn(`[AudioCache] Download failed with status: ${result.status}`);
+                await FileSystem.deleteAsync(tempUri, { idempotent: true });
+              }
+            })
+            .catch(async (err: Error) => {
+              console.error("[AudioCache] Download failed:", err);
+              await FileSystem.deleteAsync(tempUri, { idempotent: true });
+            });
         }
         // ---------------------
 
@@ -276,30 +286,45 @@ export default function TafseerScreen() {
         );
 
         // NATIVE NOTIFICATION LISTENERS
-        player.setActiveForLockScreen(
-          true,
-          {
-            title: selected.title,
-            artist: "Ramadan Tafseer 2026/1448",
-            artworkUrl: Image.resolveAssetSource(selected.banner).uri,
-          },
-          {
-            showSeekBackward: true,
-            showSeekForward: true,
-          },
-        );
+        try {
+          const artworkSource = Image.resolveAssetSource(selected.banner);
+          player.setActiveForLockScreen(
+            true,
+            {
+              title: selected.title,
+              artist: "Ramadan Tafseer 2026/1448",
+              artworkUrl: artworkSource ? artworkSource.uri : undefined,
+            },
+            {
+              showSeekBackward: true,
+              showSeekForward: true,
+            },
+          );
+        } catch (notificationError) {
+          console.warn("Failed to set lock screen controls:", notificationError);
+        }
       } catch (error) {
         console.error("Failed to load audio:", error);
         setHasActiveAudio(false);
         setIsBuffering(false);
 
-        Toast.show({
-          type: "error",
-          text1: "Audio Error",
-          text2: "Failed to load audio. Please check your internet connection.",
-          position: "bottom",
-          bottomOffset: 120,
-        });
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        // Only show toast if it's explicitly a network connectivity issue
+        const isNetworkError =
+          errorMsg.includes("hostname") ||
+          errorMsg.includes("reachable") ||
+          errorMsg.includes("Internet") ||
+          errorMsg.includes("Network request failed");
+
+        if (isNetworkError) {
+          Toast.show({
+            type: "error",
+            text1: "Network Connection Error",
+            text2: "Turn Mobile Data On or no Internet connection",
+            position: "bottom",
+            bottomOffset: 120,
+          });
+        }
       }
     },
     [unloadPlayer],
@@ -452,6 +477,26 @@ export default function TafseerScreen() {
       }
     };
     requestNotificationPermission();
+
+    // Cache Initialization & Scan
+    const initCache = async () => {
+      try {
+        const cacheDir = FileSystem.cacheDirectory + "audio_cache/";
+        const dirInfo = await FileSystem.getInfoAsync(cacheDir);
+        if (!dirInfo.exists) {
+          await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
+        }
+
+        const files = await FileSystem.readDirectoryAsync(cacheDir);
+        const ids = files
+          .filter(f => f.startsWith("audio_") && f.endsWith(".mp3"))
+          .map(f => f.replace("audio_", "").replace(".mp3", ""));
+        setCachedIds(ids);
+      } catch (e) {
+        console.warn("Cache init/scan failed:", e);
+      }
+    };
+    initCache();
   }, []);
 
   useEffect(() => {
@@ -514,21 +559,27 @@ export default function TafseerScreen() {
     };
 
     const loadDurations = async () => {
-      const results: Record<string, string> = {};
+      const cacheDir = FileSystem.cacheDirectory + "audio_cache/";
 
-      // Process sequential to avoid resource overload
-      for (const audio of audioFiles) {
-        if (!active) break;
+      const durationPromises = audioFiles.map(async (audio) => {
+        const filename = `audio_${audio.id}.mp3`;
+        const fileUri = cacheDir + filename;
+        const fileInfo = await FileSystem.getInfoAsync(fileUri);
+        const source = fileInfo.exists ? fileUri : audio.source;
+
         try {
-          const duration = await loadDurationFromSource(audio.source);
-          results[audio.id] = duration != null ? formatDuration(duration) : "--:--";
+          const duration = await loadDurationFromSource(source);
+          return { id: audio.id, duration: duration != null ? formatDuration(duration) : "--:--" };
         } catch (error) {
           console.error(`Error loading duration for ${audio.title}:`, error);
-          results[audio.id] = "--:--";
+          return { id: audio.id, duration: "--:--" };
         }
-      }
+      });
 
+      const resultsArray = await Promise.all(durationPromises);
       if (active) {
+        const results: Record<string, string> = {};
+        resultsArray.forEach(res => { results[res.id] = res.duration; });
         setDurations(results);
       }
     };
@@ -542,34 +593,32 @@ export default function TafseerScreen() {
 
   useEffect(() => {
     if (!isPlaying) {
-      if (spinLoopRef.current) {
-        spinLoopRef.current.stop();
-        spinLoopRef.current = null;
+      if (morphLoopRef.current) {
+        morphLoopRef.current.stop();
+        morphLoopRef.current = null;
       }
       return;
     }
 
-    spinValue.stopAnimation((value) => {
-      spinValue.setValue(value % 1);
-      spinLoopRef.current = Animated.loop(
-        Animated.timing(spinValue, {
-          toValue: 1,
-          duration: 10000,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-        { resetBeforeIteration: true },
-      );
-      spinLoopRef.current.start();
-    });
+    morphValue.setValue(0);
+    morphLoopRef.current = Animated.loop(
+      Animated.timing(morphValue, {
+        toValue: 1,
+        duration: 4000,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: true,
+      }),
+      { resetBeforeIteration: true },
+    );
+    morphLoopRef.current.start();
 
     return () => {
-      if (spinLoopRef.current) {
-        spinLoopRef.current.stop();
-        spinLoopRef.current = null;
+      if (morphLoopRef.current) {
+        morphLoopRef.current.stop();
+        morphLoopRef.current = null;
       }
     };
-  }, [isPlaying, spinValue]);
+  }, [isPlaying, morphValue]);
 
   useEffect(() => {
     if (!isPlaying || !playerVisible) {
@@ -635,10 +684,24 @@ export default function TafseerScreen() {
 
   const progressRatio =
     durationMillis > 0 ? positionMillis / durationMillis : 0;
-  const rotate = spinValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "360deg"],
+
+  const borderRadiusTL = morphValue.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [70, 140, 70],
   });
+  const borderRadiusTR = morphValue.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [140, 70, 140],
+  });
+  const borderRadiusBL = morphValue.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [120, 90, 120],
+  });
+  const borderRadiusBR = morphValue.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [90, 120, 90],
+  });
+
   const titleMarqueeX = vizValue.interpolate({
     inputRange: [0, 1],
     outputRange: [0, -spectrumRailWidth],
@@ -685,8 +748,27 @@ export default function TafseerScreen() {
         </View>
 
         <View style={styles.playerBody}>
-          <Animated.View style={[styles.discWrap, { transform: [{ rotate }] }]}>
-            <Image source={currentAudio.banner} style={styles.discImage} />
+          <Animated.View style={[
+            styles.discWrap,
+            {
+              borderTopLeftRadius: borderRadiusTL,
+              borderTopRightRadius: borderRadiusTR,
+              borderBottomLeftRadius: borderRadiusBL,
+              borderBottomRightRadius: borderRadiusBR,
+            }
+          ]}>
+            <Animated.Image
+              source={currentAudio.banner}
+              style={[
+                styles.discImage,
+                {
+                  borderTopLeftRadius: borderRadiusTL,
+                  borderTopRightRadius: borderRadiusTR,
+                  borderBottomLeftRadius: borderRadiusBL,
+                  borderBottomRightRadius: borderRadiusBR,
+                }
+              ]}
+            />
             <View style={styles.discCenter} />
           </Animated.View>
 
@@ -822,11 +904,13 @@ export default function TafseerScreen() {
 
             <View style={styles.bottomAction}>
               <MaterialCommunityIcons
-                name="download-outline"
+                name={cachedIds.includes(currentAudio.id) ? "check-circle" : "cloud-download-outline"}
                 size={20}
-                color={palette.text}
+                color={cachedIds.includes(currentAudio.id) ? "#39d47d" : palette.text}
               />
-              <ThemedText style={styles.bottomActionText}>Offline</ThemedText>
+              <ThemedText style={styles.bottomActionText}>
+                {cachedIds.includes(currentAudio.id) ? "Cached" : "Offline"}
+              </ThemedText>
             </View>
             <Pressable
               style={styles.hideBtn}
@@ -914,6 +998,7 @@ export default function TafseerScreen() {
               index={index}
               scheme={scheme}
               isPlaying={isPlaying && currentAudio.id === audio.id}
+              isCached={cachedIds.includes(audio.id)}
               durationText={durations[audio.id] ?? "..."}
               onPress={() => void openPlayer(index)}
             />
@@ -928,38 +1013,55 @@ export default function TafseerScreen() {
           ]}
         >
           <SectionTitle title="Scholar Info" />
-          <View style={[styles.scholarCard, { borderColor: palette.border }]}>
+          <View style={[styles.scholarCard, { backgroundColor: palette.surface, borderColor: palette.surface }]}>
             <View style={styles.scholarHeader}>
-              <View style={[styles.avatar, { backgroundColor: palette.tint }]}>
-                <MaterialCommunityIcons name="account" size={20} color="#fff" />
+              <View style={[styles.avatar, { backgroundColor: palette.tint + "20" }]}>
+                <ExpoImage
+                  source={require("@/assets/images/photos/day_2.jpg")}
+                  style={styles.scholarImage}
+                  contentFit="cover"
+                  transition={200}
+                />
               </View>
               <View style={{ flex: 1 }}>
-                <ThemedText style={styles.scholarName}>
-                  Ustadh Name Here
-                </ThemedText>
+                <View style={styles.scholarNameRow}>
+                  <ThemedText style={styles.scholarName}>
+                    Prof. Abdullahi Bappah Garkuwa
+                  </ThemedText>
+                  <MaterialCommunityIcons name="check-decagram" size={16} color={palette.tint} />
+                </View>
                 <ThemedText style={styles.scholarRole}>
-                  Ramadan Tafseer Scholar
+                  Principal Speaker / Scholar
                 </ThemedText>
+                <View style={styles.statusBadge}>
+                  <View style={styles.statusDot} />
+                  <ThemedText style={styles.statusText}>Live Now (Estimated)</ThemedText>
+                </View>
               </View>
             </View>
 
-            <View style={styles.metaRow}>
-              <ThemedText style={styles.metaLabel}>Email</ThemedText>
-              <ThemedText style={styles.metaValue}>
-                scholar@email.com
-              </ThemedText>
-            </View>
-            <View style={styles.metaRow}>
-              <ThemedText style={styles.metaLabel}>Venue</ThemedText>
-              <ThemedText style={styles.metaValue}>
-                Mosque Address Here
-              </ThemedText>
-            </View>
-            <View style={styles.metaRow}>
-              <ThemedText style={styles.metaLabel}>Daily Time</ThemedText>
-              <ThemedText style={styles.metaValue}>
-                4:30 PM - 8:00 PM
-              </ThemedText>
+            <View style={styles.scholarDivider} />
+
+            <View style={styles.scholarMetaGrid}>
+              <View style={styles.metaRow}>
+                <View style={styles.metaIcon}>
+                  <MaterialCommunityIcons name="email-outline" size={14} color={palette.text} />
+                </View>
+                <View>
+                  <ThemedText style={styles.metaLabel}>Reach Out</ThemedText>
+                  <ThemedText style={styles.metaValue}>scholar@email.com</ThemedText>
+                </View>
+              </View>
+
+              <View style={styles.metaRow}>
+                <View style={styles.metaIcon}>
+                  <MaterialCommunityIcons name="map-marker-outline" size={14} color={palette.text} />
+                </View>
+                <View>
+                  <ThemedText style={styles.metaLabel}>Venue</ThemedText>
+                  <ThemedText style={styles.metaValue}>Masallacin Kofar Dagaci</ThemedText>
+                </View>
+              </View>
             </View>
           </View>
         </View>
@@ -973,6 +1075,7 @@ function AnimatedAudioCard({
   index,
   scheme,
   isPlaying,
+  isCached,
   durationText,
   onPress,
 }: {
@@ -980,6 +1083,7 @@ function AnimatedAudioCard({
   index: number;
   scheme: "light" | "dark";
   isPlaying: boolean;
+  isCached: boolean;
   durationText: string;
   onPress: () => void;
 }) {
@@ -1025,7 +1129,7 @@ function AnimatedAudioCard({
         ]}
       >
         <View style={styles.bannerWrap}>
-          <Image source={audio.banner} style={styles.bannerImage} />
+          <ExpoImage source={audio.banner} style={styles.bannerImage} />
           <View style={styles.playingIconWrap}>
             <MaterialCommunityIcons
               name={isPlaying ? "equalizer" : "play"}
@@ -1042,15 +1146,17 @@ function AnimatedAudioCard({
           </ThemedText>
         </View>
 
-        <View style={styles.offlineBadge}>
-          <ThemedText
-            lightColor="#ffffff"
-            darkColor="#ffffff"
-            style={styles.offlineText}
-          >
-            Offline
-          </ThemedText>
-        </View>
+        {isCached && (
+          <View style={styles.offlineBadge}>
+            <ThemedText
+              lightColor="#ffffff"
+              darkColor="#ffffff"
+              style={styles.offlineText}
+            >
+              Offline
+            </ThemedText>
+          </View>
+        )}
       </Pressable>
     </Animated.View>
   );
@@ -1130,43 +1236,103 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   scholarCard: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 10,
-    gap: 10,
+    borderRadius: 24,
+    padding: 20,
+    gap: 16,
+    boxShadow: "0px 4px 12px rgba(0, 0, 0, 0.05)",
+    elevation: 2,
+    marginTop: 10,
   },
   scholarHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 16,
   },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 999,
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "rgba(22, 148, 74, 0.2)",
+  },
+  scholarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  scholarNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 2,
+  },
+  scholarName: {
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: -0.2,
+  },
+  scholarRole: {
+    fontSize: 13,
+    opacity: 0.65,
+    fontWeight: "600",
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(22, 148, 74, 0.08)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+    marginTop: 6,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#16944a",
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#16944a",
+    textTransform: "uppercase",
+  },
+  scholarDivider: {
+    height: 1,
+    backgroundColor: "rgba(128, 128, 128, 0.08)",
+    marginVertical: 4,
+  },
+  scholarMetaGrid: {
+    flexDirection: "column",
+    gap: 12,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  metaIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: "rgba(128, 128, 128, 0.05)",
     alignItems: "center",
     justifyContent: "center",
   },
-  scholarName: {
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  scholarRole: {
-    fontSize: 12,
-    opacity: 0.78,
-  },
-  metaRow: {
-    gap: 2,
-  },
   metaLabel: {
-    fontSize: 11,
+    fontSize: 10,
     textTransform: "uppercase",
-    opacity: 0.7,
-    fontWeight: "700",
+    opacity: 0.5,
+    fontWeight: "800",
+    letterSpacing: 0.5,
   },
   metaValue: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "700",
   },
   audioCard: {
     marginTop: 8,
@@ -1257,14 +1423,14 @@ const styles = StyleSheet.create({
   discWrap: {
     width: 280,
     height: 280,
-    borderRadius: 999,
     overflow: "hidden",
-    borderWidth: 10,
-    borderColor: "rgba(22, 148, 74, 0.3)",
+    borderWidth: 6,
+    borderColor: "rgba(22, 148, 74, 0.4)",
     alignItems: "center",
     justifyContent: "center",
     boxShadow: "0px 8px 18px rgba(22, 148, 74, 0.35)",
     elevation: 8,
+    backgroundColor: "rgba(22, 148, 74, 0.1)",
   },
   discImage: {
     width: "100%",

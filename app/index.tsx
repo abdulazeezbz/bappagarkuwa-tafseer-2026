@@ -28,19 +28,19 @@ const slides: Slide[] = [
     id: 1,
     title: "Ramadan Tafseer 1448",
     subtitle: "Welcome to a modern space for Qur'anic TafSeer.",
-    image: require("@/assets/images/photos/bg (4).jpg"),
+    image: require("@/assets/images/photos/bg_4.jpg"),
   },
   {
     id: 2,
     title: "Tafseer Gallery",
     subtitle: "Beautiful memories from every Tafseer session in one place.",
-    image: require("@/assets/images/photos/bg (6).jpg"),
+    image: require("@/assets/images/photos/bg_6.jpg"),
   },
   {
     id: 3,
     title: "Reels Highlights",
     subtitle: "Short videos from the 2026 Tafseer journey.",
-    image: require("@/assets/images/photos/bg (3).jpg"),
+    image: require("@/assets/images/photos/bg_3.jpg"),
   },
 ];
 
@@ -196,7 +196,7 @@ export default function HomeScreen() {
                 >
                   <TouchableWithoutFeedback onPress={closeModal}>
                     <View style={styles.modalBackdrop}>
-                      <TouchableWithoutFeedback onPress={() => {}}>
+                      <TouchableWithoutFeedback onPress={() => { }}>
                         <View style={styles.modalCard}>
                           <Pressable onPress={handleModalImageTap}>
                             <Animated.Image
@@ -237,10 +237,7 @@ export default function HomeScreen() {
                     Schorlar Info:
                   </ThemedText>
                   <ThemedText lightColor="#ffffff" darkColor="#ffffff">
-                    Schorlar Name here
-                  </ThemedText>
-                  <ThemedText lightColor="#ffffff" darkColor="#ffffff">
-                    Schorlar Email here
+                    Prof. Abdullahi Bappah Garkuwa
                   </ThemedText>
                   <ThemedText lightColor="#ffffff" darkColor="#ffffff">
                     {" "}
@@ -261,7 +258,7 @@ export default function HomeScreen() {
                       {" "}
                       Venue:
                     </ThemedText>{" "}
-                    Address here Mosque
+                    Kagarawal Masallacin Kofar Dagaci
                   </ThemedText>
                   <ThemedText lightColor="#ffffff" darkColor="#ffffff">
                     <ThemedText
@@ -272,7 +269,7 @@ export default function HomeScreen() {
                       {" "}
                       Time:
                     </ThemedText>{" "}
-                    4:30 PM - 8:00 PM
+                    4:30 PM - 5:30 PM
                   </ThemedText>
                 </View>
               </View>

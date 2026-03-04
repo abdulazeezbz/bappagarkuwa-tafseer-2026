@@ -73,6 +73,11 @@ export default function HomeTabsLayout() {
   }, [mini.hasActiveAudio]);
 
   useEffect(() => {
+    // Reset dismissal whenever the track (banner) changes so it reappears
+    setMiniDismissed(false);
+  }, [mini.bannerSource]);
+
+  useEffect(() => {
     if (mini.isPlaying && showMini) {
       const loop = Animated.loop(
         Animated.sequence([
@@ -125,9 +130,9 @@ export default function HomeTabsLayout() {
   const miniPanResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
+        onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: (_, g) =>
-          Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3,
+          Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2,
         onPanResponderGrant: () => {
           setIsDraggingMini(true);
         },
