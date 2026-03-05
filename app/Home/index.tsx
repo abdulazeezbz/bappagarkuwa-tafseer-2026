@@ -274,6 +274,12 @@ export default function TafseerScreen() {
             setPositionMillis(Math.floor(status.currentTime * 1000));
             setDurationMillis(Math.floor(status.duration * 1000));
 
+            if (Platform.OS === "web") {
+              console.log(
+                `[WebStatus] Pos: ${status.currentTime}, Dur: ${status.duration}, Loaded: ${status.isLoaded}`
+              );
+            }
+
             // Auto-play if requested and just loaded
             if (
               shouldPlay &&
@@ -421,14 +427,28 @@ export default function TafseerScreen() {
 
   const seekToRatio = useCallback(
     async (ratio: number) => {
-      if (!playerRef.current || !statusRef.current?.isLoaded || durationMillis <= 0) return;
+      if (!playerRef.current) return;
+
+      // On web, status durations can sometimes be Infinity initially
+      const effectiveDuration = durationMillis > 0 ? durationMillis : (statusRef.current?.duration ? statusRef.current.duration * 1000 : 0);
+
+      if (effectiveDuration <= 0) {
+        console.warn("[Seek] Cannot seek, duration unknown", { durationMillis, statusDuration: statusRef.current?.duration });
+        return;
+      }
+
       const nextPosition = Math.max(
         0,
-        Math.min(durationMillis, Math.floor(durationMillis * ratio)),
+        Math.min(effectiveDuration, Math.floor(effectiveDuration * ratio)),
       );
       const seekSeconds = nextPosition / 1000;
+
+      if (Platform.OS === "web") {
+        console.log(`[WebSeek] Ratio: ${ratio}, SeekSeconds: ${seekSeconds}, Dur: ${effectiveDuration / 1000}`);
+      }
+
       if (Number.isFinite(seekSeconds)) {
-        await playerRef.current.seekTo(seekSeconds);
+        playerRef.current.seekTo(seekSeconds);
       }
     },
     [durationMillis],
@@ -436,8 +456,39 @@ export default function TafseerScreen() {
 
   const onTimelinePress = useCallback(
     async (event: GestureResponderEvent) => {
-      const ratio = event.nativeEvent.locationX / timelineWidth;
-      await seekToRatio(ratio);
+      const native = event.nativeEvent as any;
+      let x = native.locationX;
+
+      // Web fallback since locationX is often missing or different on web Pressable
+      if (x === undefined || x === null || Number.isNaN(x)) {
+        x = native.offsetX;
+      }
+
+      if (Platform.OS === "web") {
+        console.log("[WebClick]", {
+          locationX: native.locationX,
+          offsetX: native.offsetX,
+          timelineWidth,
+          finalX: x,
+        });
+      }
+
+      if (x !== undefined && x !== null && !Number.isNaN(x) && timelineWidth > 0) {
+        const ratio = x / timelineWidth;
+        await seekToRatio(ratio);
+      } else {
+        console.warn("[Timeline] Could not calculate ratio", { x, timelineWidth });
+        // Final fallback for web: try to get from the event target if it's a DOM element
+        if (Platform.OS === "web" && native.target && native.target.getBoundingClientRect) {
+          const rect = native.target.getBoundingClientRect();
+          const clientX = native.clientX || (event as any).clientX;
+          if (clientX) {
+            const fallbackX = clientX - rect.left;
+            console.log("[WebSeekFallback] Calculated X:", fallbackX);
+            await seekToRatio(fallbackX / rect.width);
+          }
+        }
+      }
     },
     [seekToRatio, timelineWidth],
   );
