@@ -1,24 +1,19 @@
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { useVideoPlayer, VideoView } from "expo-video";
 import React, { useEffect, useRef, useState } from "react";
 import {
     Dimensions,
-    Image,
     Pressable,
     StyleSheet,
     Text,
     View,
 } from "react-native";
 import Animated, {
-    interpolate,
     useAnimatedStyle,
     useSharedValue,
-    withRepeat,
-    withSequence,
-    withTiming
 } from "react-native-reanimated";
+import { TeacherIcon } from "./teacher-icon";
 
 const { width, height } = Dimensions.get("window");
 
@@ -54,37 +49,24 @@ export const VideoItem = ({
     const [isPlaying, setIsPlaying] = useState(false);
     const progress = useSharedValue(0);
 
-    // Teacher Icon Animation Values
-    const teacherShake = useSharedValue(0);
-
     // Double Tap Logic
     const lastTap = useRef<number>(0);
     const [showSeekFeedback, setShowSeekFeedback] = useState<"forward" | "backward" | null>(null);
-
-    // Shimmer Animation for Teacher Icon
-    const shimmerValue = useSharedValue(-1);
-
-    useEffect(() => {
-        shimmerValue.value = withRepeat(
-            withTiming(1, { duration: 2500 }),
-            -1,
-            false
-        );
-    }, [shimmerValue]);
 
     useEffect(() => {
         if (isPaused) {
             player.pause();
         } else {
-            player.play();
+            // Only play if the player is ready or already playing
+            if (player.status === 'readyToPlay' || player.playing) {
+                player.play();
+            }
         }
-    }, [isPaused, player]);
+    }, [isPaused, player, player.status]);
 
     useEffect(() => {
-        // Sync initial playing state
+        // Initial sync
         setIsPlaying(player.playing);
-
-        // Update total duration if already available
         if (player.duration > 0) setTotalDuration(player.duration);
 
         const playingSubscription = player.addListener("playingChange", (event) => {
@@ -94,39 +76,52 @@ export const VideoItem = ({
         const statusSubscription = player.addListener("statusChange", (event) => {
             if (event.status === "readyToPlay") {
                 setTotalDuration(player.duration);
-                if (!isPaused) player.play(); // Start playing when ready, if not paused
+                if (!isPaused) player.play();
             }
         });
 
-        // Progress listener
         const timeUpdateSubscription = player.addListener("timeUpdate", (event) => {
+            // Sync with engine ONLY if drift is significant (> 1.5s)
+            // This prevents the jittering and 00:00 stickiness while keeping it accurate
+            if (Math.abs(event.currentTime - currentTime) > 1.5) {
+                setCurrentTime(event.currentTime);
+            }
+
             if (player.duration > 0) {
                 const p = event.currentTime / player.duration;
                 progress.value = p;
-                setCurrentTime(event.currentTime);
-
-                // Update total duration if it's still 0 (fallback)
                 setTotalDuration(prev => prev === 0 ? player.duration : prev);
             }
         });
-
-        // Start teacher shake
-        teacherShake.value = withRepeat(
-            withSequence(
-                withTiming(-5, { duration: 100 }),
-                withTiming(5, { duration: 100 }),
-                withTiming(0, { duration: 100 })
-            ),
-            -1, // infinite
-            true
-        );
 
         return () => {
             playingSubscription.remove();
             statusSubscription.remove();
             timeUpdateSubscription.remove();
         };
-    }, [player, progress, teacherShake, isPaused]);
+    }, [player, progress]);
+
+    // HIGH-PRECISION LOCAL TIMER
+    useEffect(() => {
+        let interval: any;
+
+        if (isPlaying) {
+            interval = setInterval(() => {
+                setCurrentTime(prev => {
+                    const next = prev + 1;
+                    // Auto-reset if we overshoot duration (looping)
+                    if (totalDuration > 0 && next >= totalDuration) {
+                        return 0;
+                    }
+                    return next;
+                });
+            }, 1000);
+        }
+
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [isPlaying, totalDuration]);
 
     const handlePress = (side: "left" | "right") => {
         const now = Date.now();
@@ -136,9 +131,11 @@ export const VideoItem = ({
             // DOUBLE TAP detected
             if (side === "left") {
                 player.seekBy(-10);
+                setCurrentTime(prev => Math.max(0, prev - 10));
                 setShowSeekFeedback("backward");
             } else {
                 player.seekBy(10);
+                setCurrentTime(prev => Math.min(totalDuration, prev + 10));
                 setShowSeekFeedback("forward");
             }
             setTimeout(() => setShowSeekFeedback(null), 500);
@@ -155,22 +152,6 @@ export const VideoItem = ({
 
     const progressStyle = useAnimatedStyle(() => ({
         width: `${progress.value * 100}%`,
-    }));
-
-    const teacherStyle = useAnimatedStyle(() => {
-        return {
-            transform: [
-                { rotate: `${teacherShake.value}deg` }
-            ],
-            position: 'absolute',
-            left: 16,
-            bottom: 155, // Positioned right above the username metadata
-            zIndex: 100,
-        };
-    });
-
-    const shimmerStyle = useAnimatedStyle(() => ({
-        transform: [{ translateX: interpolate(shimmerValue.value, [-1, 1], [-100, 100]) }],
     }));
 
     return (
@@ -194,39 +175,13 @@ export const VideoItem = ({
                 nativeControls={false} // Hide default controls
             />
 
-            {/* Teacher Icon */}
-            <Animated.View style={teacherStyle}>
-                <View style={styles.teacherIconWrapper}>
-                    <Image
-                        source={require("@/assets/banner/icon.jpg")}
-                        style={styles.teacherIcon}
-                    />
-                    <Animated.View style={[StyleSheet.absoluteFill, shimmerStyle, { pointerEvents: 'none' }]}>
-                        <LinearGradient
-                            colors={['transparent', 'rgba(255, 255, 255, 0.4)', 'transparent']}
-                            start={{ x: 0, y: 0.5 }}
-                            end={{ x: 1, y: 0.5 }}
-                            style={{ flex: 1, width: 60, height: '100%' }}
-                        />
-                    </Animated.View>
-                </View>
-            </Animated.View>
-
-            {/* Seek Feedback */}
-            {showSeekFeedback && (
-                <View style={styles.seekFeedback}>
-                    <MaterialCommunityIcons
-                        name={showSeekFeedback === "forward" ? "fast-forward" : "rewind"}
-                        size={40}
-                        color="rgba(255,255,255,0.8)"
-                    />
-                    <Text style={styles.seekText}>{showSeekFeedback === "forward" ? "+10s" : "-10s"}</Text>
-                </View>
-            )}
+            {/* Teacher Icon - Absolute Positioned */}
+            <TeacherIcon progress={progress} />
 
             {/* Metadata Overlays */}
             <View style={styles.overlay} pointerEvents="none">
                 <View style={styles.bottomContent}>
+
                     <View style={styles.userRow}>
                         <Text style={styles.username}>@{username}</Text>
                         <MaterialCommunityIcons name="check-decagram" size={16} color="#3897f0" style={styles.verifyIcon} />
@@ -248,6 +203,18 @@ export const VideoItem = ({
             <View style={styles.progressContainer}>
                 <Animated.View style={[styles.progressBar, progressStyle]} />
             </View>
+
+            {/* Seek Feedback */}
+            {showSeekFeedback && (
+                <View style={styles.seekFeedback}>
+                    <MaterialCommunityIcons
+                        name={showSeekFeedback === "forward" ? "fast-forward" : "rewind"}
+                        size={40}
+                        color="rgba(255,255,255,0.8)"
+                    />
+                    <Text style={styles.seekText}>{showSeekFeedback === "forward" ? "+10s" : "-10s"}</Text>
+                </View>
+            )}
 
             {/* Large Play Icon when paused */}
             {!isPlaying && (
@@ -342,8 +309,11 @@ const styles = StyleSheet.create({
         zIndex: 55,
     },
     teacherIcon: {
-        width: 54,
-        height: 54,
+        width: 85,
+        height: 85,
+        marginLeft: -15,
+        marginTop: -10,
+        resizeMode: 'contain',
         borderRadius: 27,
     },
     teacherIconWrapper: {

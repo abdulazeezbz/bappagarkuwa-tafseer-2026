@@ -242,12 +242,23 @@ export default function HomeScreen() {
                   <ThemedText lightColor="#ffffff" darkColor="#ffffff">
                     {" "}
                   </ThemedText>
-                  <ThemedText
+                  {/* <ThemedText
                     lightColor="#ffffff"
                     darkColor="#ffffff"
                     style={{ fontWeight: "800" }}
                   >
                     Tafseer Session Info:
+                  </ThemedText> */}
+                  <ThemedText lightColor="#ffffff" darkColor="#ffffff">
+                    <ThemedText
+                      style={{ fontWeight: "600" }}
+                      lightColor="#ffffff"
+                      darkColor="#ffffff"
+                    >
+                      {" "}
+                      Venue:{"\n "}
+                    </ThemedText>
+                    Kagarawal Masallacin Jumma'ah
                   </ThemedText>
                   <ThemedText lightColor="#ffffff" darkColor="#ffffff">
                     <ThemedText
@@ -256,19 +267,8 @@ export default function HomeScreen() {
                       darkColor="#ffffff"
                     >
                       {" "}
-                      Venue:
-                    </ThemedText>{" "}
-                    Kagarawal Masallacin Kofar Dagaci
-                  </ThemedText>
-                  <ThemedText lightColor="#ffffff" darkColor="#ffffff">
-                    <ThemedText
-                      style={{ fontWeight: "600" }}
-                      lightColor="#ffffff"
-                      darkColor="#ffffff"
-                    >
-                      {" "}
-                      Time:
-                    </ThemedText>{" "}
+                      Time:{"\n "}
+                    </ThemedText>
                     4:30 PM - 5:30 PM
                   </ThemedText>
                 </View>
