@@ -87,7 +87,7 @@ export default function RootLayout() {
           if (status === 'granted') {
             await Notifications.scheduleNotificationAsync({
               content: {
-                title: "Maraba da bappagarkuwa!",
+                title: "Welcome To Bappagarkuwa 2026 Ramadan Tafseer App!",
                 body: "Go to Highlight Section to Watch Short Videos",
                 data: { screen: 'Highlights' },
               },
