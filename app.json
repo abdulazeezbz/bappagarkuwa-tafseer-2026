@@ -19,9 +19,9 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/banner/day_4.jpg",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/banner/day_4.jpg"
+        "foregroundImage": "./assets/banner/icon.jpg",
+        "backgroundImage": "./assets/banner/icon.jpg",
+        "monochromeImage": "./assets/banner/icon.jpg"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -34,7 +34,7 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/photos/icon2.jpg"
     },
     "plugins": [
       "expo-router",

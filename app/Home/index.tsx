@@ -1017,7 +1017,7 @@ export default function TafseerScreen() {
             <View style={styles.scholarHeader}>
               <View style={[styles.avatar, { backgroundColor: palette.tint + "20" }]}>
                 <ExpoImage
-                  source={require("@/assets/images/photos/day_2.jpg")}
+                  source={require("@/assets/banner/day_2.jpg")}
                   style={styles.scholarImage}
                   contentFit="cover"
                   transition={200}
