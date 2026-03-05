@@ -206,36 +206,41 @@ export default function TafseerScreen() {
 
       try {
         // --- CACHING LOGIC ---
-        const filename = `audio_${selected.id}.mp3`;
-        const tempFilename = `${filename}.tmp`;
-        const cacheDir = FileSystem.cacheDirectory + "audio_cache/";
-        const fileUri = cacheDir + filename;
-        const tempUri = cacheDir + tempFilename;
-
-        const fileInfo = await FileSystem.getInfoAsync(fileUri);
         let audioSource: string = selected.source;
 
-        if (fileInfo.exists) {
-          console.log(`[AudioCache] Cache hit: ${filename}`);
-          audioSource = fileUri;
-        } else {
-          console.log(`[AudioCache] Cache miss: ${selected.source}`);
-          // Start download to a temporary file first
-          FileSystem.downloadAsync(selected.source, tempUri)
-            .then(async (result) => {
-              if (result.status === 200) {
-                await FileSystem.moveAsync({ from: tempUri, to: fileUri });
-                console.log(`[AudioCache] Finished caching: ${filename}`);
-                setCachedIds(prev => [...new Set([...prev, selected.id])]);
-              } else {
-                console.warn(`[AudioCache] Download failed with status: ${result.status}`);
+        if (Platform.OS !== "web") {
+          const filename = `audio_${selected.id}.mp3`;
+          const tempFilename = `${filename}.tmp`;
+          const cacheDir = FileSystem.cacheDirectory + "audio_cache/";
+          const fileUri = cacheDir + filename;
+          const tempUri = cacheDir + tempFilename;
+
+          const fileInfo = await FileSystem.getInfoAsync(fileUri);
+
+          if (fileInfo.exists) {
+            console.log(`[AudioCache] Cache hit: ${filename}`);
+            audioSource = fileUri;
+          } else {
+            console.log(`[AudioCache] Cache miss: ${selected.source}`);
+            // Start download to a temporary file first
+            FileSystem.downloadAsync(selected.source, tempUri)
+              .then(async (result) => {
+                if (result.status === 200) {
+                  await FileSystem.moveAsync({ from: tempUri, to: fileUri });
+                  console.log(`[AudioCache] Finished caching: ${filename}`);
+                  setCachedIds((prev) => [...new Set([...prev, selected.id])]);
+                } else {
+                  console.warn(
+                    `[AudioCache] Download failed with status: ${result.status}`
+                  );
+                  await FileSystem.deleteAsync(tempUri, { idempotent: true });
+                }
+              })
+              .catch(async (err: Error) => {
+                console.error("[AudioCache] Download failed:", err);
                 await FileSystem.deleteAsync(tempUri, { idempotent: true });
-              }
-            })
-            .catch(async (err: Error) => {
-              console.error("[AudioCache] Download failed:", err);
-              await FileSystem.deleteAsync(tempUri, { idempotent: true });
-            });
+              });
+          }
         }
         // ---------------------
 
@@ -374,16 +379,20 @@ export default function TafseerScreen() {
   }, [loadAndPlay]);
 
   const skipForward = useCallback(async () => {
-    if (playerRef.current && statusRef.current?.isLoaded) {
+    if (playerRef.current && statusRef.current?.isLoaded && statusRef.current.duration > 0) {
       const nextPos = Math.min(statusRef.current.duration, statusRef.current.currentTime + 30);
-      await playerRef.current.seekTo(nextPos);
+      if (Number.isFinite(nextPos)) {
+        await playerRef.current.seekTo(nextPos);
+      }
     }
   }, []);
 
   const jumpBackward = useCallback(async () => {
     if (playerRef.current && statusRef.current?.isLoaded) {
       const nextPos = Math.max(0, statusRef.current.currentTime - 10);
-      await playerRef.current.seekTo(nextPos);
+      if (Number.isFinite(nextPos)) {
+        await playerRef.current.seekTo(nextPos);
+      }
     }
   }, []);
 
@@ -412,12 +421,15 @@ export default function TafseerScreen() {
 
   const seekToRatio = useCallback(
     async (ratio: number) => {
-      if (!playerRef.current || !statusRef.current?.isLoaded) return;
+      if (!playerRef.current || !statusRef.current?.isLoaded || durationMillis <= 0) return;
       const nextPosition = Math.max(
         0,
         Math.min(durationMillis, Math.floor(durationMillis * ratio)),
       );
-      await playerRef.current.seekTo(nextPosition / 1000);
+      const seekSeconds = nextPosition / 1000;
+      if (Number.isFinite(seekSeconds)) {
+        await playerRef.current.seekTo(seekSeconds);
+      }
     },
     [durationMillis],
   );
@@ -480,6 +492,7 @@ export default function TafseerScreen() {
 
     // Cache Initialization & Scan
     const initCache = async () => {
+      if (Platform.OS === "web") return;
       try {
         const cacheDir = FileSystem.cacheDirectory + "audio_cache/";
         const dirInfo = await FileSystem.getInfoAsync(cacheDir);
@@ -489,8 +502,8 @@ export default function TafseerScreen() {
 
         const files = await FileSystem.readDirectoryAsync(cacheDir);
         const ids = files
-          .filter(f => f.startsWith("audio_") && f.endsWith(".mp3"))
-          .map(f => f.replace("audio_", "").replace(".mp3", ""));
+          .filter((f) => f.startsWith("audio_") && f.endsWith(".mp3"))
+          .map((f) => f.replace("audio_", "").replace(".mp3", ""));
         setCachedIds(ids);
       } catch (e) {
         console.warn("Cache init/scan failed:", e);
@@ -562,14 +575,27 @@ export default function TafseerScreen() {
       const cacheDir = FileSystem.cacheDirectory + "audio_cache/";
 
       const durationPromises = audioFiles.map(async (audio) => {
-        const filename = `audio_${audio.id}.mp3`;
-        const fileUri = cacheDir + filename;
-        const fileInfo = await FileSystem.getInfoAsync(fileUri);
-        const source = fileInfo.exists ? fileUri : audio.source;
+        let source = audio.source;
+
+        if (Platform.OS !== "web") {
+          try {
+            const filename = `audio_${audio.id}.mp3`;
+            const fileUri = cacheDir + filename;
+            const fileInfo = await FileSystem.getInfoAsync(fileUri);
+            if (fileInfo.exists) {
+              source = fileUri;
+            }
+          } catch (e) {
+            // fallback to original source if cache check fails
+          }
+        }
 
         try {
           const duration = await loadDurationFromSource(source);
-          return { id: audio.id, duration: duration != null ? formatDuration(duration) : "--:--" };
+          return {
+            id: audio.id,
+            duration: duration != null ? formatDuration(duration) : "--:--",
+          };
         } catch (error) {
           console.error(`Error loading duration for ${audio.title}:`, error);
           return { id: audio.id, duration: "--:--" };
@@ -579,7 +605,9 @@ export default function TafseerScreen() {
       const resultsArray = await Promise.all(durationPromises);
       if (active) {
         const results: Record<string, string> = {};
-        resultsArray.forEach(res => { results[res.id] = res.duration; });
+        resultsArray.forEach((res) => {
+          results[res.id] = res.duration;
+        });
         setDurations(results);
       }
     };
