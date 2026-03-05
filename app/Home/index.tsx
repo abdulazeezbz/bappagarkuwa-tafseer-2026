@@ -42,68 +42,68 @@ type AudioItem = {
 const audioFiles: AudioItem[] = [
   {
     id: "1",
-    title: "Ramadan Tafseer - Day 01",
+    title: "Day 01 Ramadan Tafseer",
     source: "https://res.cloudinary.com/dpjni6fdl/video/upload/v1772538042/day_1.mp3",
     banner: require("@/assets/banner/day_1.jpg"),
   },
   {
     id: "2",
-    title: "Ramadan Tafseer - Day 02",
-    source: "https://res.cloudinary.com/dpjni6fdl/video/upload/v1772538775/day_2.mp3", // Placeholder URL based on pattern if known, or just a sample
+    title: "Day 02 Ramadan Tafseer",
+    source: "https://res.cloudinary.com/dpjni6fdl/video/upload/v1772538775/day_2.mp3",
     banner: require("@/assets/banner/day_2.jpg"),
   },
   {
     id: "3",
-    title: "Ramadan Tafseer - Day 03",
+    title: "Day 03 Ramadan Tafseer",
     source: "https://res.cloudinary.com/dpjni6fdl/video/upload/v1772538042/day_3.mp3",
     banner: require("@/assets/banner/day_3.jpg"),
   },
   {
     id: "4",
-    title: "Ramadan Tafseer - Day 04",
+    title: "Day 04 Ramadan Tafseer",
     source: "https://res.cloudinary.com/dpjni6fdl/video/upload/v1772538042/day_4.mp3",
     banner: require("@/assets/banner/day_4.jpg"),
   },
   {
     id: "5",
-    title: "Ramadan Tafseer - Day 05",
+    title: "Day 05 Ramadan Tafseer",
     source: "https://res.cloudinary.com/dpjni6fdl/video/upload/v1772538042/day_5.mp3",
     banner: require("@/assets/banner/day_5.jpg"),
   },
   {
     id: "6",
-    title: "Ramadan Tafseer - Day 06",
+    title: "Day 06 Ramadan Tafseer",
     source: "https://res.cloudinary.com/dpjni6fdl/video/upload/v1772538042/day_6.mp3",
     banner: require("@/assets/banner/day_6.jpg"),
   },
   {
     id: "7",
-    title: "Ramadan Tafseer - Day 07",
+    title: "Day 07 Ramadan Tafseer",
     source: "https://res.cloudinary.com/dpjni6fdl/video/upload/v1772538042/day_7.mp3",
     banner: require("@/assets/banner/day_7.jpg"),
   },
   {
     id: "8",
-    title: "Ramadan Tafseer - Day 08",
+    title: "Day 08 Ramadan Tafseer",
     source: "https://res.cloudinary.com/dpjni6fdl/video/upload/v1772538042/day_8.mp3",
     banner: require("@/assets/banner/day_8.jpg"),
   },
   {
     id: "10",
-    title: "Ramadan Tafseer - Day 10",
+    title: "Day 10 Ramadan Tafseer",
     source: "https://res.cloudinary.com/dpjni6fdl/video/upload/v1772538042/day_10.mp3",
     banner: require("@/assets/banner/day_10.jpg"),
   },
   {
     id: "11",
-    title: "Ramadan Tafseer - Day 11",
+    title: "Day 11 Ramadan Tafseer",
     source: "https://res.cloudinary.com/dpjni6fdl/video/upload/v1772538042/day_11.mp3",
     banner: require("@/assets/banner/day_11.jpg"),
   },
 
   {
     id: "13",
-    title: "Ramadan Tafseer - Day 13",
+    title: "Day 13 Ramadan Tafseer",
     source: "https://res.cloudinary.com/dpjni6fdl/video/upload/v1772538042/day_13.mp3",
     banner: require("@/assets/banner/day_13.jpg"),
   },
@@ -418,6 +418,52 @@ export default function TafseerScreen() {
     },
     [loadAndPlay],
   );
+
+  const handleDownload = useCallback(async (url: string, filename: string) => {
+    if (Platform.OS === "web") {
+      try {
+        Toast.show({
+          type: "info",
+          text1: "Starting Download",
+          text2: "Fetching audio file...",
+          position: "bottom",
+          bottomOffset: 120,
+        });
+
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Clean up memory
+        window.URL.revokeObjectURL(blobUrl);
+
+        Toast.show({
+          type: "success",
+          text1: "Download Complete",
+          text2: "Your file is ready.",
+          position: "bottom",
+          bottomOffset: 120,
+        });
+      } catch (error) {
+        console.error("Web download failed:", error);
+        // Fallback: original simple link if blob fetch fails (e.g. CORS)
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.target = "_blank";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    }
+  }, []);
 
   const toggleFavorite = useCallback((id: string) => {
     setFavoriteIds((prev) =>
@@ -981,16 +1027,35 @@ export default function TafseerScreen() {
               <ThemedText style={styles.bottomActionText}>Favorite</ThemedText>
             </Pressable>
 
-            <View style={styles.bottomAction}>
+            <Pressable
+              style={styles.bottomAction}
+              onPress={() => {
+                if (Platform.OS === "web") {
+                  const dayNum = currentAudio.id.padStart(2, '0');
+                  const filename = `${dayNum} Prof Abdullahi bappah garkuwa Ramadan Tafseer 2026.mp3`;
+                  handleDownload(currentAudio.source, filename);
+                }
+              }}
+            >
               <MaterialCommunityIcons
-                name={cachedIds.includes(currentAudio.id) ? "check-circle" : "cloud-download-outline"}
+                name={
+                  cachedIds.includes(currentAudio.id)
+                    ? "check-circle"
+                    : "cloud-download-outline"
+                }
                 size={20}
-                color={cachedIds.includes(currentAudio.id) ? "#39d47d" : palette.text}
+                color={
+                  cachedIds.includes(currentAudio.id) ? "#39d47d" : palette.text
+                }
               />
               <ThemedText style={styles.bottomActionText}>
-                {cachedIds.includes(currentAudio.id) ? "Cached" : "Offline"}
+                {cachedIds.includes(currentAudio.id)
+                  ? "Cached"
+                  : Platform.OS === "web"
+                    ? "Download"
+                    : "Offline"}
               </ThemedText>
-            </View>
+            </Pressable>
             <Pressable
               style={styles.hideBtn}
               onPress={() => setPlayerVisible(false)}
@@ -1080,6 +1145,11 @@ export default function TafseerScreen() {
               isCached={cachedIds.includes(audio.id)}
               durationText={durations[audio.id] ?? "..."}
               onPress={() => void openPlayer(index)}
+              onDownload={() => {
+                const dayNum = audio.id.padStart(2, '0');
+                const filename = `${dayNum} Prof Abdullahi bappah garkuwa Ramadan Tafseer 2026.mp3`;
+                handleDownload(audio.source, filename);
+              }}
             />
           ))}
         </View>
@@ -1103,7 +1173,12 @@ export default function TafseerScreen() {
                 />
               </View>
               <View style={{ flex: 1 }}>
+                <View style={styles.statusBadge}>
+                  <View style={styles.statusDot} />
+                  <ThemedText style={styles.statusText}>Sheikh</ThemedText>
+                </View>
                 <View style={styles.scholarNameRow}>
+
                   <ThemedText style={styles.scholarName}>
                     Prof. Abdullahi Bappah Garkuwa
                   </ThemedText>
@@ -1112,10 +1187,6 @@ export default function TafseerScreen() {
                 <ThemedText style={styles.scholarRole}>
                   Principal Speaker / Scholar
                 </ThemedText>
-                <View style={styles.statusBadge}>
-                  <View style={styles.statusDot} />
-                  <ThemedText style={styles.statusText}>Live Now (Estimated)</ThemedText>
-                </View>
               </View>
             </View>
 
@@ -1157,6 +1228,7 @@ function AnimatedAudioCard({
   isCached,
   durationText,
   onPress,
+  onDownload,
 }: {
   audio: AudioItem;
   index: number;
@@ -1165,6 +1237,7 @@ function AnimatedAudioCard({
   isCached: boolean;
   durationText: string;
   onPress: () => void;
+  onDownload?: () => void;
 }) {
   const translateY = useRef(new Animated.Value(18)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -1225,16 +1298,22 @@ function AnimatedAudioCard({
           </ThemedText>
         </View>
 
-        {isCached && (
-          <View style={styles.offlineBadge}>
+        {(isCached || Platform.OS === "web") && (
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              onDownload?.();
+            }}
+            style={styles.offlineBadge}
+          >
             <ThemedText
               lightColor="#ffffff"
               darkColor="#ffffff"
               style={styles.offlineText}
             >
-              Offline
+              {Platform.OS === "web" ? "Download" : "Offline"}
             </ThemedText>
-          </View>
+          </Pressable>
         )}
       </Pressable>
     </Animated.View>

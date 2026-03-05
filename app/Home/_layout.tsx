@@ -1,7 +1,7 @@
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Tabs, useRouter } from "expo-router";
+import { Tabs, useRouter, useSegments } from "expo-router";
 import {
   useEffect,
   useMemo,
@@ -33,6 +33,8 @@ export default function HomeTabsLayout() {
   const isDark = colorScheme === "dark";
   const palette = Colors[isDark ? "dark" : "light"];
   const router = useRouter();
+  const segments = useSegments();
+  const isHighlights = (segments as string[]).includes("highlights");
   const mini = useSyncExternalStore(
     subscribeMiniController,
     getMiniControllerSnapshot,
@@ -235,6 +237,7 @@ export default function HomeTabsLayout() {
           tabBarActiveTintColor: palette.tint,
           tabBarInactiveTintColor: palette.icon,
           tabBarStyle: {
+            display: isHighlights ? "none" : "flex",
             position: "absolute",
             left: 12,
             right: 12,
