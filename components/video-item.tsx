@@ -260,7 +260,7 @@ export const VideoItem = ({
             <VideoView
                 style={styles.video}
                 player={player}
-                contentFit="cover"
+                contentFit="contain"
                 nativeControls={false}
             />
 
