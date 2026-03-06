@@ -265,6 +265,7 @@ export default function GalleryScreen() {
         <View style={styles.placeholder} />
       </View>
       <FlatList
+        style={{ flex: 1, width: '100%' }}
         data={galleryData[selectedDay]?.images || []}
         horizontal
         pagingEnabled
