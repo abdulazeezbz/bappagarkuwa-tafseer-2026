@@ -6,12 +6,14 @@ import {
   Image,
   ImageRequireSource,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
+import * as FileSystem from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library";
 import * as Sharing from "expo-sharing";
 
@@ -169,44 +171,158 @@ export default function GalleryScreen() {
 
     try {
       setIsSaving(true);
+      const assetSource = Image.resolveAssetSource(currentImage);
+      const uri = assetSource.uri;
 
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission Required",
-          "Please allow access to save images to your gallery.",
-        );
-        setIsSaving(false);
-        return;
+      if (Platform.OS === 'web') {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `ramadan_day_${selectedDay + 1}_image_${selectedImageIndex + 1}.jpg`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      } else {
+        const { status } = await MediaLibrary.requestPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert(
+            "Permission Required",
+            "Please allow access to save images to your gallery."
+          );
+          return;
+        }
+
+        const filename = `ramadan_day_${selectedDay + 1}_image_${selectedImageIndex + 1}.jpg`;
+        const fileUri = FileSystem.cacheDirectory + filename;
+
+        const { uri: localUri } = await FileSystem.downloadAsync(uri, fileUri);
+        const asset = await MediaLibrary.createAssetAsync(localUri);
+        await MediaLibrary.createAlbumAsync("Bappagarkuwa", asset, false);
+        Alert.alert("Saved!", "Image saved to your gallery.");
       }
-
-      Alert.alert(
-        "Info",
-        "For bundled app images, they are saved automatically when you build the APK. To save individual images, you would need to use remote image URLs instead.",
-      );
     } catch (error) {
       console.error("Error saving image:", error);
       Alert.alert("Error", "Failed to save image. Please try again.");
     } finally {
       setIsSaving(false);
     }
-  }, [currentImage]);
+  }, [currentImage, selectedDay, selectedImageIndex]);
 
   const handleShareImage = useCallback(async () => {
+    if (!currentImage) return;
     try {
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
-        Alert.alert("Error", "Sharing is not available on this device.");
-        return;
-      }
+      const assetSource = Image.resolveAssetSource(currentImage);
+      const uri = assetSource.uri;
 
-      const shareUrl = "https://profbappagarkuwa.vercel.app";
-      await Sharing.shareAsync(shareUrl);
-    } catch (error) {
-      console.error("Error sharing:", error);
-      Alert.alert("Error", "Failed to share. Please try again.");
+      if (Platform.OS === 'web') {
+        if (navigator.share) {
+          await navigator.share({
+            title: `Ramadan Day ${selectedDay + 1}`,
+            url: window.location.href, // Sharing the website URL is better for bundled images on web
+          });
+        } else {
+          await navigator.clipboard.writeText(window.location.href);
+          Alert.alert("Copied!", "Link copied to clipboard.");
+        }
+      } else {
+        const isAvailable = await Sharing.isAvailableAsync();
+        if (!isAvailable) {
+          Alert.alert("Error", "Sharing is not available on this device.");
+          return;
+        }
+
+        // For local bundling sharing, download to cache first then share
+        const fileUri = FileSystem.cacheDirectory + 'share_temp.jpg';
+        const { uri: localUri } = await FileSystem.downloadAsync(uri, fileUri);
+
+        await Sharing.shareAsync(localUri, {
+          dialogTitle: `Share Image from Day ${selectedDay + 1}`,
+        });
+      }
+    } catch (error: any) {
+      if (error?.message !== "AbortError" && error?.message !== "User did not share") {
+        console.error("Error sharing:", error);
+        Alert.alert("Error", "Failed to share. Please try again.");
+      }
     }
-  }, []);
+  }, [currentImage, selectedDay]);
+
+  const ViewerView = () => (
+    <View style={styles.viewerContainer}>
+      <View style={styles.viewerTopBar}>
+        <Pressable onPress={closeViewer} style={styles.backButton}>
+          <Text style={styles.backButtonText}>← Back</Text>
+        </Pressable>
+        <View style={styles.viewerTitleContainer}>
+          <Text style={styles.viewerTitle}>Day {selectedDay + 1}</Text>
+          <Text style={styles.viewerSubtitle}>
+            {galleryData[selectedDay]?.theme}
+          </Text>
+        </View>
+        <View style={styles.placeholder} />
+      </View>
+      <FlatList
+        data={galleryData[selectedDay]?.images || []}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        initialScrollIndex={selectedImageIndex}
+        getItemLayout={(_, index) => ({
+          length: SCREEN_WIDTH,
+          offset: SCREEN_WIDTH * index,
+          index,
+        })}
+        keyExtractor={(img, idx) => `viewer-${selectedDay}-${idx}`}
+        renderItem={({ item }) => (
+          <View style={styles.viewerImageContainer}>
+            <Image
+              source={item}
+              style={styles.viewerImage}
+              resizeMode="contain"
+            />
+          </View>
+        )}
+        onMomentumScrollEnd={(e) =>
+          setSelectedImageIndex(
+            Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH),
+          )
+        }
+      />
+      <View style={styles.actionButtonsContainer}>
+        <View style={styles.imageCounter}>
+          <Text style={styles.counterText}>
+            {selectedImageIndex + 1} /{" "}
+            {galleryData[selectedDay]?.images.length || 0}
+          </Text>
+        </View>
+        <View style={styles.actionButtonsColumn}>
+          <Pressable style={styles.actionButton} onPress={handleShareImage}>
+            <View style={styles.actionIconCircle}>
+              <Text style={styles.actionIconText}>↗</Text>
+            </View>
+            <Text style={styles.actionLabel}>Share</Text>
+          </Pressable>
+          <Pressable
+            style={styles.actionButton}
+            onPress={handleSaveImage}
+            disabled={isSaving}
+          >
+            <View style={styles.actionIconCircle}>
+              <Text style={styles.actionIconText}>
+                {isSaving ? "..." : "↓"}
+              </Text>
+            </View>
+            <Text style={styles.actionLabel}>
+              {isSaving ? "Saving..." : "Save"}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
 
   const handleImagePress = useCallback(
     (idx: number) => openViewer(idx),
@@ -256,87 +372,24 @@ export default function GalleryScreen() {
           />
         ))}
       </View>
-      <Modal
-        visible={isViewerOpen}
-        transparent={false}
-        animationType="slide"
-        statusBarTranslucent
-        onRequestClose={closeViewer}
-      >
-        <View style={styles.viewerContainer}>
-          <View style={styles.viewerTopBar}>
-            <Pressable onPress={closeViewer} style={styles.backButton}>
-              <Text style={styles.backButtonText}>← Back</Text>
-            </Pressable>
-            <View style={styles.viewerTitleContainer}>
-              <Text style={styles.viewerTitle}>Day {selectedDay + 1}</Text>
-              <Text style={styles.viewerSubtitle}>
-                {galleryData[selectedDay]?.theme}
-              </Text>
-            </View>
-            <View style={styles.placeholder} />
+
+      {isViewerOpen && (
+        Platform.OS === "web" ? (
+          <View style={[StyleSheet.absoluteFill, { zIndex: 1000 }]}>
+            <ViewerView />
           </View>
-          <FlatList
-            data={galleryData[selectedDay]?.images || []}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            initialScrollIndex={selectedImageIndex}
-            getItemLayout={(_, index) => ({
-              length: SCREEN_WIDTH,
-              offset: SCREEN_WIDTH * index,
-              index,
-            })}
-            keyExtractor={(img, idx) => `viewer-${selectedDay}-${idx}`}
-            renderItem={({ item }) => (
-              <View style={styles.viewerImageContainer}>
-                <Image
-                  source={item}
-                  style={styles.viewerImage}
-                  resizeMode="contain"
-                />
-              </View>
-            )}
-            onMomentumScrollEnd={(e) =>
-              setSelectedImageIndex(
-                Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH),
-              )
-            }
-          />
-          <View style={styles.actionButtonsContainer}>
-            <View style={styles.imageCounter}>
-              <Text style={styles.counterText}>
-                {selectedImageIndex + 1} /{" "}
-                {galleryData[selectedDay]?.images.length || 0}
-              </Text>
-            </View>
-            {/* <View style={styles.actionButtonsColumn}>
-              <Pressable style={styles.actionButton} 
-              // onPress={handleShareImage}
-              >
-                <View style={styles.actionIconCircle}>
-                  <Text style={styles.actionIconText}>↗</Text>
-                </View>
-                <Text style={styles.actionLabel}>Share</Text>
-              </Pressable>
-              <Pressable
-                style={styles.actionButton}
-                // onPress={handleSaveImage}
-                disabled={isSaving}
-              >
-                <View style={styles.actionIconCircle}>
-                  <Text style={styles.actionIconText}>
-                    {isSaving ? "..." : "↓"}
-                  </Text>
-                </View>
-                <Text style={styles.actionLabel}>
-                  {isSaving ? "Saving..." : "Save"}
-                </Text>
-              </Pressable>
-            </View> */}
-          </View>
-        </View>
-      </Modal>
+        ) : (
+          <Modal
+            visible={isViewerOpen}
+            transparent={false}
+            animationType="slide"
+            statusBarTranslucent
+            onRequestClose={closeViewer}
+          >
+            <ViewerView />
+          </Modal>
+        )
+      )}
     </ThemedView>
   );
 }
