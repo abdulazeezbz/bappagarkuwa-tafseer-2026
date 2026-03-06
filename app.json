@@ -58,7 +58,15 @@
       ],
       "expo-notifications",
       "expo-asset",
-      "expo-video"
+      "expo-video",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow access to save videos to your gallery.",
+          "savePhotosPermission": "Allow access to save videos to your gallery.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
