@@ -33,9 +33,12 @@
       ]
     },
     "web": {
-      "output": "static",
-      "favicon": "./assets/banner/icon.jpg"
-    },
+  	"output": "static",
+  	"favicon": "./assets/banner/icon.jpg",
+  	"meta": {
+    	"google-site-verification": "GHfpIJ64g2UFFx3PMgVC0Ivfg9pveEy9EQM_p9rcyNg"
+  	}
+	}
     "plugins": [
       "expo-router",
       [
