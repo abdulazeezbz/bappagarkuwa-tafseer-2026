@@ -1,3 +1,4 @@
+import { getMiniControllerSnapshot } from "@/components/_mini-controller-bridge";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useVideoPlayer, VideoView } from "expo-video";
@@ -57,6 +58,11 @@ export const VideoItem = ({
         if (isPaused) {
             player.pause();
         } else {
+            // Pause any currently playing audio when this video starts
+            const snap = getMiniControllerSnapshot();
+            if (snap.hasActiveAudio && snap.isPlaying && snap.onTogglePlayPause) {
+                void snap.onTogglePlayPause();
+            }
             // Only play if the player is ready or already playing
             if (player.status === 'readyToPlay' || player.playing) {
                 player.play();

@@ -1,8 +1,8 @@
 import { VideoItem } from '@/components/video-item';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
-import { Dimensions, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Dimensions, FlatList, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { height } = Dimensions.get('window');
@@ -63,7 +63,25 @@ export default function HighlightsScreen() {
     }, [])
   );
 
+  // On web, the browser back button fires 'popstate' — stop all videos
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handlePop = () => setIsFocused(false);
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []);
+
+  // On web, FlatList's onViewableItemsChanged is unreliable.
+  // Use scroll offset to calculate the active index instead.
+  const onWebScroll = useCallback((event: any) => {
+    if (Platform.OS !== 'web') return;
+    const offsetY = event.nativeEvent.contentOffset.y;
+    const index = Math.round(offsetY / height);
+    setActiveIndex(index);
+  }, []);
+
   const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
+    if (Platform.OS === 'web') return; // handled by onWebScroll
     if (viewableItems.length > 0) {
       setActiveIndex(viewableItems[0].index);
     }
@@ -90,6 +108,8 @@ export default function HighlightsScreen() {
         showsVerticalScrollIndicator={false}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
+        onScroll={onWebScroll}
+        scrollEventThrottle={16}
         snapToInterval={height}
         snapToAlignment="start"
         decelerationRate="fast"
