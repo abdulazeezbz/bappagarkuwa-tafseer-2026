@@ -1,7 +1,7 @@
 import { getMiniControllerSnapshot } from "@/components/_mini-controller-bridge";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library";
 import * as Sharing from "expo-sharing";
 import { useVideoPlayer, VideoView } from "expo-video";
@@ -217,7 +217,7 @@ export const VideoItem = ({
                 }
 
                 const filename = `${title.replace(/\s+/g, "_")}.mp4`;
-                const fileUri = cacheDirectory + filename;
+                const fileUri = FileSystem.cacheDirectory + filename;
 
                 const downloadResumable = FileSystem.createDownloadResumable(
                     videoUrl,
