@@ -1,11 +1,17 @@
 import { getMiniControllerSnapshot } from "@/components/_mini-controller-bridge";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import * as FileSystem from "expo-file-system";
+import * as MediaLibrary from "expo-media-library";
+import * as Sharing from "expo-sharing";
 import { useVideoPlayer, VideoView } from "expo-video";
 import React, { useEffect, useRef, useState } from "react";
 import {
+    Alert,
     Dimensions,
+    Platform,
     Pressable,
+    Share,
     StyleSheet,
     Text,
     View,
@@ -50,6 +56,10 @@ export const VideoItem = ({
     const [isPlaying, setIsPlaying] = useState(false);
     const progress = useSharedValue(0);
 
+    // Action states
+    const [isSaving, setIsSaving] = useState(false);
+    const [isSharing, setIsSharing] = useState(false);
+
     // Double Tap Logic
     const lastTap = useRef<number>(0);
     const [showSeekFeedback, setShowSeekFeedback] = useState<"forward" | "backward" | null>(null);
@@ -87,8 +97,6 @@ export const VideoItem = ({
         });
 
         const timeUpdateSubscription = player.addListener("timeUpdate", (event) => {
-            // Sync with engine ONLY if drift is significant (> 1.5s)
-            // This prevents the jittering and 00:00 stickiness while keeping it accurate
             if (Math.abs(event.currentTime - currentTime) > 1.5) {
                 setCurrentTime(event.currentTime);
             }
@@ -115,7 +123,6 @@ export const VideoItem = ({
             interval = setInterval(() => {
                 setCurrentTime(prev => {
                     const next = prev + 1;
-                    // Auto-reset if we overshoot duration (looping)
                     if (totalDuration > 0 && next >= totalDuration) {
                         return 0;
                     }
@@ -134,7 +141,6 @@ export const VideoItem = ({
         const DOUBLE_TAP_DELAY = 300;
 
         if (now - lastTap.current < DOUBLE_TAP_DELAY) {
-            // DOUBLE TAP detected
             if (side === "left") {
                 player.seekBy(-10);
                 setCurrentTime(prev => Math.max(0, prev - 10));
@@ -146,7 +152,6 @@ export const VideoItem = ({
             }
             setTimeout(() => setShowSeekFeedback(null), 500);
         } else {
-            // SINGLE TAP
             if (player.playing) {
                 player.pause();
             } else {
@@ -154,6 +159,84 @@ export const VideoItem = ({
             }
         }
         lastTap.current = now;
+    };
+
+    // ── Share ───────────────────────────────────────────────────────────────
+    const handleShare = async () => {
+        if (isSharing) return;
+        setIsSharing(true);
+        try {
+            if (Platform.OS === 'web') {
+                if (navigator.share) {
+                    await navigator.share({ title, url: videoUrl });
+                } else {
+                    await navigator.clipboard.writeText(videoUrl);
+                    Alert.alert("Copied!", "Video URL copied to clipboard.");
+                }
+            } else {
+                const isAvailable = await Sharing.isAvailableAsync();
+                if (isAvailable) {
+                    // Share the direct URL as text via native Share sheet
+                    await Share.share({ message: `${title}\n${videoUrl}`, title });
+                } else {
+                    Alert.alert("Error", "Sharing is not available on this device.");
+                }
+            }
+        } catch (error: any) {
+            if (error?.message !== "AbortError" && error?.message !== "User did not share") {
+                console.error("Share error:", error);
+            }
+        } finally {
+            setIsSharing(false);
+        }
+    };
+
+    // ── Download / Save ─────────────────────────────────────────────────────
+    const handleDownload = async () => {
+        if (isSaving) return;
+        setIsSaving(true);
+        try {
+            if (Platform.OS === 'web') {
+                // Web: trigger a download via hidden anchor
+                const a = document.createElement("a");
+                a.href = videoUrl;
+                a.download = `${title.replace(/\s+/g, "_")}.mp4`;
+                a.target = "_blank";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            } else {
+                // Native: download to cache then save to media library
+                const { status } = await MediaLibrary.requestPermissionsAsync();
+                if (status !== "granted") {
+                    Alert.alert(
+                        "Permission Required",
+                        "Please allow access to save videos to your gallery."
+                    );
+                    return;
+                }
+
+                const filename = `${title.replace(/\s+/g, "_")}.mp4`;
+                const fileUri = cacheDirectory + filename;
+
+                const downloadResumable = FileSystem.createDownloadResumable(
+                    videoUrl,
+                    fileUri,
+                    {}
+                );
+                const result = await downloadResumable.downloadAsync();
+                if (!result?.uri) throw new Error("Download failed");
+
+                const asset = await MediaLibrary.createAssetAsync(result.uri);
+                await MediaLibrary.createAlbumAsync("Bappagarkuwa", asset, false);
+                Alert.alert("Saved!", "Video saved to your gallery.");
+            }
+        } catch (error) {
+            console.error("Download error:", error);
+            Alert.alert("Error", "Failed to save video. Please try again.");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const progressStyle = useAnimatedStyle(() => ({
@@ -178,7 +261,7 @@ export const VideoItem = ({
                 style={styles.video}
                 player={player}
                 contentFit="cover"
-                nativeControls={false} // Hide default controls
+                nativeControls={false}
             />
 
             {/* Teacher Icon - Absolute Positioned */}
@@ -187,7 +270,6 @@ export const VideoItem = ({
             {/* Metadata Overlays */}
             <View style={styles.overlay} pointerEvents="none">
                 <View style={styles.bottomContent}>
-
                     <View style={styles.userRow}>
                         <Text style={styles.username}>@{username}</Text>
                         <MaterialCommunityIcons name="check-decagram" size={16} color="#3897f0" style={styles.verifyIcon} />
@@ -203,6 +285,41 @@ export const VideoItem = ({
                         </Text>
                     </View>
                 </View>
+            </View>
+
+            {/* Action Buttons — right side column (gallery style) */}
+            <View style={styles.actionButtonsColumn} pointerEvents="box-none">
+                {/* Share */}
+                <Pressable
+                    style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
+                    onPress={handleShare}
+                    disabled={isSharing}
+                >
+                    <View style={styles.actionIconCircle}>
+                        <MaterialCommunityIcons
+                            name={isSharing ? "loading" : "share-variant"}
+                            size={24}
+                            color="#fff"
+                        />
+                    </View>
+                    <Text style={styles.actionLabel}>{isSharing ? "..." : "Share"}</Text>
+                </Pressable>
+
+                {/* Download / Save */}
+                <Pressable
+                    style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
+                    onPress={handleDownload}
+                    disabled={isSaving}
+                >
+                    <View style={styles.actionIconCircle}>
+                        <MaterialCommunityIcons
+                            name={isSaving ? "loading" : "download"}
+                            size={24}
+                            color="#fff"
+                        />
+                    </View>
+                    <Text style={styles.actionLabel}>{isSaving ? "Saving..." : "Save"}</Text>
+                </Pressable>
             </View>
 
             {/* Progress Bar (TikTok style) */}
@@ -257,7 +374,7 @@ const styles = StyleSheet.create({
         zIndex: 60,
     },
     bottomContent: {
-        width: "100%",
+        width: "75%", // leave room for action buttons on the right
         gap: 6,
     },
     userRow: {
@@ -296,6 +413,43 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: "600",
     },
+    // ── Gallery-style action buttons ─────────────────────────────────────────
+    actionButtonsColumn: {
+        position: "absolute",
+        right: 16,
+        bottom: 120,
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 10,
+        zIndex: 65,
+    },
+    actionButton: {
+        alignItems: "center",
+        gap: 8,
+    },
+    actionButtonPressed: {
+        opacity: 0.7,
+        transform: [{ scale: 0.94 }],
+    },
+    actionIconCircle: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: "rgba(0,0,0,0.3)",
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.3)",
+    },
+    actionLabel: {
+        color: "#fff",
+        fontSize: 12,
+        fontWeight: "600",
+        textShadowColor: "rgba(0,0,0,0.8)",
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 4,
+    },
+    // ── Progress bar ─────────────────────────────────────────────────────────
     progressContainer: {
         position: "absolute",
         bottom: 0,
